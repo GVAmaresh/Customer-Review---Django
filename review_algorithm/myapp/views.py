@@ -9,10 +9,24 @@ from myapp.hashing import (
     generate_jwt_token,
     verify_jwt_token,
 )
+from django.conf import settings
+from django.core.cache.backends.base import DEFAULT_TIMEOUT
+from django.views.decorators.cache import cache_page
+from django.core.cache import cache
 from django.views.decorators.csrf import csrf_exempt
+from deep_learning import operation_review
 from pathlib import Path
 import pandas as pd
 import json
+from pydantic import BaseModel, ValidationError
+from rq import Queue
+from rq.job import Job
+import django_rq
+
+class JobData(BaseModel):
+    review_text:str
+
+CACHE_TTL = getattr(settings, "CACHE_TTL", DEFAULT_TIMEOUT)
 
 def home(request):
     return HttpResponse("Running Successfully")
@@ -152,6 +166,9 @@ def signup(request):
 
 #     return JsonResponse({"error": "Method not allowed"}, status=405)
 
+def get_unprocessed_reviews():
+    review_collection = get_review_collection()
+    return list(review_collection.find({"is_process": False}))
 
 def add_review(user_id, review_text):
     review_collection = get_review_collection()
@@ -196,10 +213,16 @@ def review(request):
                 )
 
             user_id = verify_jwt_token(token)
-            # return JsonResponse({"token": token, "review": review_text, "user_id": user_id}, status=200)
             if not user_id:
                 return JsonResponse({"error": "Invalid token"}, status=401)
             review_data = add_review(user_id=user_id, review_text=review_text)
+            unprocessed_reviews = get_unprocessed_reviews()
+            if not unprocessed_reviews:
+                return JsonResponse({"status": 200, "message": "No unprocessed reviews found"}, status=200)
+
+            q = django_rq.get_queue("default")
+            for review in unprocessed_reviews:
+                q.enqueue(operation_review, review["review"], review["user_id"], str(review["_id"]))
 
             return JsonResponse(
                 {

@@ -14,7 +14,7 @@ from django.core.cache.backends.base import DEFAULT_TIMEOUT
 from django.views.decorators.cache import cache_page
 from django.core.cache import cache
 from django.views.decorators.csrf import csrf_exempt
-from deep_learning import operation_review
+from .deep_learning import operation_review
 from pathlib import Path
 import pandas as pd
 import json
@@ -168,7 +168,11 @@ def signup(request):
 
 def get_unprocessed_reviews():
     review_collection = get_review_collection()
-    return list(review_collection.find({"is_process": False}))
+    return list(review_collection.find({"is_proceed": False}))
+
+def process_reviews(reviews):
+    for review in reviews:
+        operation_review(review["review"], review["user_id"], str(review["_id"]))
 
 def add_review(user_id, review_text):
     review_collection = get_review_collection()
@@ -200,7 +204,6 @@ def review(request):
 
         review_text = body.get("review")
        
-
         try:
             if not token or not review_text:
                 return JsonResponse(
@@ -217,12 +220,12 @@ def review(request):
                 return JsonResponse({"error": "Invalid token"}, status=401)
             review_data = add_review(user_id=user_id, review_text=review_text)
             unprocessed_reviews = get_unprocessed_reviews()
+            
             if not unprocessed_reviews:
-                return JsonResponse({"status": 200, "message": "No unprocessed reviews found"}, status=200)
+                return JsonResponse({"status": 200, "message": "No unprocessed reviews found", "processed": unprocessed_reviews}, status=200)
 
             q = django_rq.get_queue("default")
-            for review in unprocessed_reviews:
-                q.enqueue(operation_review, review["review"], review["user_id"], str(review["_id"]))
+            q.enqueue(process_reviews, unprocessed_reviews)
 
             return JsonResponse(
                 {

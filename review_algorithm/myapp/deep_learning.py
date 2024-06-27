@@ -1,8 +1,11 @@
 import requests
 import json
 from django.http import JsonResponse
-from mongodb import get_precess_review_collection
+from django.conf import settings
+from .mongodb import get_precess_review_collection
 
+# SORT_REVIEW_API = settings.SORT_REVIEW_API or "https://127.0.0.1:5000/api/v1/compare_text"
+# COMPARE_REVIEW_API = settings.COMPARE_REVIEW_API or "https://127.0.0.1:5000/api/v1/compare_text"
 
 def operation_review(review_text, user_id, review_id):
     headers = {
@@ -10,7 +13,7 @@ def operation_review(review_text, user_id, review_id):
     }
     payload = {"review": review_text}
     try:
-        response = requests.post("api//", headers=headers, data=json.dumps(payload))
+        response = requests.post(settings.MONGODB["SORT_REVIEW_API"], headers=headers, data=json.dumps(payload))
         response.raise_for_status()
         data = response.json()
         if not data["status"] == 200:
@@ -35,7 +38,7 @@ def operation_review(review_text, user_id, review_id):
             all_review = process_review.find({"label": output})
             payload = {"texts": all_review, "text": output.values[0]}
             response = requests.post(
-                "api2//", headers=headers, data=json.dumps(payload)
+                settings.MONGODB["COMPARE_REVIEW_API"], headers=headers, data=json.dumps(payload)
             )
             response.raise_for_status()
             data = response.json()

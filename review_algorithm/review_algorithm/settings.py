@@ -11,7 +11,14 @@ https://docs.djangoproject.com/en/5.0/ref/settings/
 """
 
 from pathlib import Path
-from decouple import config
+import environ
+
+import os
+from dotenv import load_dotenv
+load_dotenv()
+
+# env = environ.Env()
+# environ.Env.read_env()
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -45,11 +52,9 @@ INSTALLED_APPS = [
 
 RQ_QUEUES = {
     'default': {
-        'HOST': 'localhost',
-        'PORT': 6379,
-        'DB': 0,
-        'DEFAULT_TIMEOUT': 360,
-    }
+        'URL': os.getenv('REDIS_URL', default='redis://localhost:6379'),
+        'DEFAULT_TIMEOUT': 50000,
+    },
 }
 
 MIDDLEWARE = [
@@ -102,14 +107,17 @@ DATABASES = {
 }
 
 MONGODB = {
-    'NAME': config('MONGODB_NAME'),
-    'USER': config('MONGODB_USER'),
-    'PASSWORD': config('MONGODB_PASSWORD'),
-    'HOST': config('MONGODB_HOST'),
-    'PORT': config('MONGODB_PORT', default=27017, cast=int),
+    'NAME': os.getenv('MONGODB_NAME'),
+    'USER': os.getenv('MONGODB_USER'),
+    'PASSWORD': os.getenv('MONGODB_PASSWORD'),
+    'HOST': os.getenv('MONGODB_HOST'),
+    'PORT': os.getenv('MONGODB_PORT', default=27017),
+    "SORT_REVIEW_API":os.getenv('SORT_REVIEW_API'),
+    "COMPARE_REVIEW_API": os.getenv('COMPARE_REVIEW_API')
 }
-SECRET_KEY=config("SECRET_KEY")
-# Password validation
+
+SECRET_KEY=os.getenv("SECRET_KEY")
+
 # https://docs.djangoproject.com/en/5.0/ref/settings/#auth-password-validators
 
 AUTH_PASSWORD_VALIDATORS = [
@@ -127,8 +135,6 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
-
-# Internationalization
 # https://docs.djangoproject.com/en/5.0/topics/i18n/
 
 LANGUAGE_CODE = 'en-us'

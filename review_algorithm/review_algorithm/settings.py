@@ -52,9 +52,11 @@ INSTALLED_APPS = [
 
 RQ_QUEUES = {
     'default': {
-        'URL': os.getenv('REDIS_URL', default='redis://localhost:6379'),
-        'DEFAULT_TIMEOUT': 50000,
-    },
+        'HOST': 'localhost',
+        'PORT': 6379,
+        'DB': 0,
+        'DEFAULT_TIMEOUT': 360,
+    }
 }
 
 MIDDLEWARE = [
@@ -117,6 +119,24 @@ MONGODB = {
 }
 
 SECRET_KEY=os.getenv("SECRET_KEY")
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'file': {
+            'level': 'DEBUG',
+            'class': 'logging.FileHandler',
+            'filename': 'debug.log',
+        },
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['file'],
+            'level': 'DEBUG',
+            'propagate': True,
+        },
+    },
+}
 
 # https://docs.djangoproject.com/en/5.0/ref/settings/#auth-password-validators
 

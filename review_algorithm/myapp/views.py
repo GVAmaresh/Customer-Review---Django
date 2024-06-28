@@ -22,6 +22,8 @@ from pydantic import BaseModel, ValidationError
 from rq import Queue
 from rq.job import Job
 import django_rq
+import logging
+logger = logging.getLogger(__name__)
 
 class JobData(BaseModel):
     review_text:str
@@ -169,10 +171,38 @@ def signup(request):
 def get_unprocessed_reviews():
     review_collection = get_review_collection()
     return list(review_collection.find({"is_proceed": False}))
+import logging
+import django_rq
+
+logger = logging.getLogger(__name__)
 
 def process_reviews(reviews):
+    logger.debug(f"Starting process_reviews with {len(reviews)} reviews")
+    print("Running Here 2")
+    job = []
+    
+    # Check the type of reviews
+    if not isinstance(reviews, list):
+        logger.error(f"Expected reviews to be a list but got {type(reviews).__name__}")
+        return job
+
     for review in reviews:
-        operation_review(review["review"], review["user_id"], str(review["_id"]))
+        # Check the type of each review
+        if not isinstance(review, dict):
+            logger.error(f"Expected each review to be a dict but got {type(review).__name__}")
+            continue
+
+        try:
+            q = django_rq.get_queue("default")
+            job.append(str(q.enqueue(operation_review, review["review"], review["user_id"], str(review["_id"]))))
+            # operation_review(review["review"], review["user_id"], str(review["_id"]))
+            print("Running Here 3")
+        except Exception as e:
+            logger.error(f"Error processing review {review}: {e}")
+            raise e
+    
+    return job
+
 
 def add_review(user_id, review_text):
     review_collection = get_review_collection()
@@ -184,7 +214,6 @@ def add_review(user_id, review_text):
     result = review_collection.insert_one(review_data)
     review_data["_id"] = str(result.inserted_id)
     return review_data
-
 @csrf_exempt
 def review(request):
     if request.method == "POST":
@@ -219,20 +248,24 @@ def review(request):
             if not user_id:
                 return JsonResponse({"error": "Invalid token"}, status=401)
             review_data = add_review(user_id=user_id, review_text=review_text)
-            unprocessed_reviews = get_unprocessed_reviews()
-            
-            if not unprocessed_reviews:
-                return JsonResponse({"status": 200, "message": "No unprocessed reviews found", "processed": unprocessed_reviews}, status=200)
+            # unprocessed_reviews = get_unprocessed_reviews()
+            print(review_data)
+            unprocessed_reviews = [review_data]  # Ensure this list contains the full review data
+            # unprocessed_reviews = [review["review"] for review in unprocessed_reviews]
 
-            q = django_rq.get_queue("default")
-            q.enqueue(process_reviews, unprocessed_reviews)
-
+            print(unprocessed_reviews)
+            # if not unprocessed_reviews:
+            #     return JsonResponse({"status": 400, "message": "Data sent is not found"}, status=400)
+            jobList = process_reviews(unprocessed_reviews)
+            operation_review(review_data["review"], user_id, review_data["_id"])
+            print("-----End Job List-----")
             return JsonResponse(
                 {
                     "status": 200,
                     "message": "Review submitted successfully",
                     "data": review_data,
                     "token": token,
+                    "job_list": jobList
                 },
                 status=200,
             )
@@ -306,3 +339,49 @@ def file_upload(request):
         {"status": 400, "message": "Invalid request method or no file provided"},
         status=400,
     )
+
+
+import django_rq
+from django.http import JsonResponse
+from rq.job import Job
+
+@csrf_exempt
+def job_status(request):
+    if request.method == "POST":
+        if isinstance(request.body, bytes):
+            body = json.loads(request.body.decode('utf-8'))
+        else:
+            body = json.loads(request.body)
+
+        job_ids = body.get("job_ids")
+        if not job_ids:
+            return JsonResponse(
+                {"status": 400, "message": "Job IDs are required", "data": None},
+                status=400,
+            )
+
+        q = django_rq.get_queue("default")
+        job_statuses = []
+
+        for job_id in job_ids:
+            try:
+                job = Job.fetch(job_id, connection=q.connection)
+                job_statuses.append({
+                    "job_id": job_id,
+                    "status": job.get_status(),
+                    "result": job.result,
+                    "error": str(job.exc_info) if job.is_failed else None,
+                })
+            except Exception as e:
+                job_statuses.append({
+                    "job_id": job_id,
+                    "status": "not found",
+                    "error": str(e),
+                })
+
+        return JsonResponse(
+            {"status": 200, "message": "Job statuses fetched successfully", "data": job_statuses},
+            status=200,
+        )
+
+    return JsonResponse({"status": 405, "message": "Method Not Allowed"}, status=405)
